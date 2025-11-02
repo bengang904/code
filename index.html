@@ -3,10 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pyodide Python 编辑器</title>
+<title>code 编辑器</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/theme/dracula.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/dialog/dialog.min.css"> 
 <style>
+/* CSS 样式开始 - (保持与上一个版本一致) */
 body {
     margin: 0;
     height: 100vh;
@@ -15,7 +17,37 @@ body {
     font-family: "Segoe UI", sans-serif;
     background: #1e1e1e;
     color: #d4d4d4;
+    border: 3px solid transparent; 
 }
+body.drag-over {
+    border-color: #0e639c;
+}
+
+/* 滚动条美化样式 */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px; 
+}
+::-webkit-scrollbar-track {
+    background: #252526; 
+}
+::-webkit-scrollbar-thumb {
+    background: #555; 
+    border-radius: 5px;
+    border: 2px solid #252526; 
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #777; 
+}
+#sidebar, #terminal, .CodeMirror-scroll {
+    scrollbar-color: #555 #252526; 
+    scrollbar-width: thin; 
+}
+#sidebar {
+    background: #252526;
+}
+
+/* --- 布局和菜单样式 --- */
 .topbar {
     height: 40px;
     background: #333;
@@ -81,6 +113,13 @@ body {
 #run-btn:hover {
     background: #1177bb;
 }
+/* 禁用时的样式 */
+#run-btn:disabled {
+    background: #444;
+    cursor: not-allowed;
+    color: #999;
+}
+
 .main-content {
     flex: 1;
     display: flex;
@@ -106,14 +145,14 @@ body {
 }
 #sidebar {
     flex: 1;
-    background: #252526;
     overflow-y: auto;
     padding: 10px 0;
     font-size: 13px;
     user-select: none;
+    background: #252526;
 }
 
-/* 核心修改区域：文件树样式 */
+/* --- 文件树样式 --- */
 .project-structure {
     list-style: none;
     padding: 0; 
@@ -134,44 +173,35 @@ body {
 }
 
 .folder-title {
-    /* 文件夹标题行本身水平排列并垂直居中 */
     display: flex;
     align-items: center;
     padding: 2px 5px;
 }
 
-/* 🚨 关键修改 1: 将文件夹图标添加到 .folder-title 的 ::before */
 .icon-folder > .folder-title::before { 
-    content: '📁 '; /* 文件夹图标 */
+    content: '📁 ';
     width: 20px; 
     display:inline-block; 
     text-align:center; 
-    margin-right: -4px; /* 稍微向左移动，靠近切换图标 */
-    /* 🚨 之前设置的 margin-left: -5px 现在不需要了，因为我们把图标放到最左边 */
+    margin-right: -4px; 
 }
-
-/* 文件行仍然保持 flex，便于图标和文本对齐 */
 li.icon-file {
     display: flex;
     align-items: center;
     padding: 2px 5px;
 }
-
 .folder-toggle {
     width: 16px;
     display: inline-block;
     text-align: center;
-    /* 🚨 关键修改 2: 调整 margin-right，确保切换图标和名称之间有间隔 */
     margin-right: 4px; 
     color: #999;
     cursor: pointer;
     font-family: inherit;
     font-weight: normal; 
 }
-/* 切换回 ▶ 和 ▼ */
 .folder-toggle::before { content: '▶'; }
 li.folder-open > .folder-title > .folder-toggle::before { content: '▼'; }
-
 .folder-content {
     list-style: none;
     padding-left: 0; 
@@ -181,11 +211,6 @@ li.folder-open > .folder-title > .folder-toggle::before { content: '▼'; }
     padding-left: 16px; 
 }
 li.folder-open > .folder-content { display: block; }
-
-/* 🚨 移除旧的文件夹图标样式（不再对 li.icon-folder::before 设置样式） */
-/* .icon-folder::before { ... } */
-
-/* 文件图标（保持不变，它只对 li.icon-file 起作用） */
 .icon-file::before { 
     line-height: 1.2;
     content: '📄 '; 
@@ -194,8 +219,6 @@ li.folder-open > .folder-content { display: block; }
     text-align:center; 
     margin-right:5px; 
 }
-
-/* 模拟特定文件类型的图标 */
 .icon-file[data-name$=".js"]::before, 
 .icon-file[data-name$=".ts"]::before {
     content: 'JS';
@@ -223,7 +246,7 @@ li.folder-open > .folder-content { display: block; }
     margin-right: 4px;
 }
 
-/* ... (其他通用样式保持不变) ... */
+/* --- 编辑器和终端样式 --- */
 .editor-container {
     flex: 1;
     display: flex;
@@ -305,35 +328,62 @@ li.folder-open > .folder-content { display: block; }
 .no-select { user-select: none; }
 .resizing-h { cursor: col-resize; }
 .resizing-v { cursor: row-resize; }
+/* CodeMirror 对话框样式修正 */
+.CodeMirror-dialog {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    border-top: 1px solid #333;
+    padding: 4px;
+    font-size: 14px;
+}
+.CodeMirror-dialog label {
+    margin-right: 10px;
+}
+.CodeMirror-dialog input[type=text] {
+    background: #333;
+    border: 1px solid #444;
+    color: #d4d4d4;
+    padding: 2px 4px;
+}
+/* CSS 样式结束 */
 </style>
 </head>
 <body>
 <div class="topbar">
     <div class="menu-left">
-        <div id="file-menu-item"><span>File</span>
+        <div id="file-menu-item"><span>文件</span>
             <div class="submenu">
-                <a id="new-file-btn">New File</a>
-                <a id="open-file-btn">Open File...</a>
-                <a id="save-file-btn">Save File</a>
-                <a id="close-tab-btn">Close File</a>
-                <a id="save-as-btn">Save As...</a>
+                <a id="new-file-btn">新建文件</a>
+                <a id="open-file-btn">打开文件</a>
+                <a id="save-file-btn">保存 (Ctrl+S)</a>
+                <a id="close-tab-btn">关闭文件</a>
+                <a id="save-as-btn">另存为...</a>
                 <hr style="margin:5px 0;border-color:#444">
-                <a id="import-folder-btn">Import Folder...</a>
+                <a id="import-folder-btn">打开文件夹...</a>
             </div>
         </div>
-        <div><span>Edit</span></div>
-        <div><span>View</span></div>
-        <div><span>Run</span></div>
-        <div><span>Terminal</span></div>
-        <div><span>Help</span></div>
+        <div id="edit-menu-item"><span>编辑</span>
+            <div class="submenu">
+                <a id="undo-btn">撤销 (Ctrl+Z)</a>
+                <a id="redo-btn">恢复 (Ctrl+Y)</a>
+                <hr style="margin:5px 0;border-color:#444">
+                <a id="select-all-btn">全选 (Ctrl+A)</a>
+                <a id="cut-btn">剪切 (Ctrl+X)</a>
+                <a id="copy-btn">复制 (Ctrl+C)</a>
+                <a id="paste-btn">粘贴 (Ctrl+V)</a>
+                <hr style="margin:5px 0;border-color:#444">
+                <a id="find-btn">查找 (Ctrl+F)</a>
+                <a id="replace-btn">替换 (Ctrl+H)</a>
+            </div>
+        </div>
     </div>
-    <button id="run-btn">▶ Run</button>
+    <button id="run-btn" disabled>▶ 运行</button>
 </div>
 
 <div class="main-content">
     <div class="sidebar-wrapper">
         <div id="sidebar">
-            <div style="padding:0 10px;font-weight:bold;margin-bottom:5px">Project Explorer</div>
+            <div style="padding:0 10px;font-weight:bold;margin-bottom:5px">项目结构</div>
             <ul id="project-tree" class="project-structure"></ul>
         </div>
         <div id="sidebar-resizer" class="sidebar-resizer"></div>
@@ -351,180 +401,356 @@ li.folder-open > .folder-content { display: block; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/search/searchcursor.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/dialog/dialog.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/search/search.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/search/matchesonscrollbar.min.js"></script>
 <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
 
 <script>
-// ========== 全局变量 ==========
+// ========== 全局变量/常量 ==========
 let pyodideReady = false;
 let pyodide;
 const terminal = document.getElementById("terminal");
+const runBtn = document.getElementById("run-btn");
 const fileMenuItem = document.getElementById('file-menu-item');
+const editMenuItem = document.getElementById('edit-menu-item');
 const sidebarWrapper = document.querySelector('.sidebar-wrapper');
 const editorContainer = document.querySelector('.editor-container');
 const tabsBar = document.getElementById('tabs-bar');
 const editorWrapper = document.getElementById('editor-wrapper');
 const terminalWrapper = document.getElementById('terminal-wrapper');
+const bodyElement = document.body; 
 let currentDirectoryHandle = null;
 let openedFiles = {};
 let fileHandlesCache = {};
 let activeFileId = null;
 let fileCounter = 1;
+let appClipboard = ""; 
 
-const PYTHON_TEMPLATE = '# Python 脚本\nprint("Hello, Pyodide!")';
+// Pyodide 包列表 (每次都尝试加载/初始化)
+const PACKAGES_TO_LOAD = ['numpy', 'scipy', 'pandas', 'matplotlib']; 
+
+const PYTHON_TEMPLATE = '# Python 脚本\nprint("Hello, Pyodide!")\n# 尝试使用 Pandas 或 NumPy：\n# import pandas as pd\n# import numpy as np\n# print(pd.Series(np.array([1, 2, 3])))';
 const DEFAULT_TEMPLATE = '// 新建文件\n';
 
-// ========== 工具函数 ==========
-function closeMenu(){ fileMenuItem.classList.remove('menu-open'); }
+const WELCOME_FILE_NAME = 'README.txt';
+const WELCOME_CONTENT = `欢迎使用在线 code 编辑器！
+
+1. Pyodide (Python 环境) 正在终端中加载。它将尝试在启动时加载所有科学计算库。
+2. 您可以在左侧文件菜单中新建或打开文件。
+3. 按 "▶ 运行" 。
+
+Enjoy!`;
+const WELCOME_FILE_ID = 'welcome_readme_doc'; 
+
+
+// ========== 工具函数：仅用于 Pyodide/Python 相关日志 ==========
+function logTerminal(message) {
+    terminal.textContent += message + "\n";
+    terminal.scrollTop = terminal.scrollHeight;
+}
+
+function closeMenu(){ 
+    fileMenuItem.classList.remove('menu-open'); 
+    editMenuItem.classList.remove('menu-open');
+}
 function closeMenuAndExecute(callback){ closeMenu(); if(callback) callback(); }
 function getActiveEditor(){ return activeFileId ? openedFiles[activeFileId].editor : null; }
 
-// ========== Pyodide ==========
-async function loadPyodideWithPackages(){
-    terminal.textContent = "正在加载 Python 环境，请稍等...\n";
-    pyodide = await loadPyodide({
-        stdout: msg => { terminal.textContent+=msg+"\n"; terminal.scrollTop=terminal.scrollHeight; },
-        stderr: msg => { terminal.textContent+=msg+"\n"; terminal.scrollTop=terminal.scrollHeight; }
-    });
-    const packages = ['numpy','scipy'];
-    for(const pkg of packages){ terminal.textContent+=`正在加载 ${pkg}...\n`; await pyodide.loadPackage(pkg); }
-    pyodideReady = true;
-    terminal.textContent += "Python 环境已就绪 ✅\n";
-}
-loadPyodideWithPackages();
 
-// ========== 文件与标签 ==========
-function openFileInTab(name, content, fileHandle=null){
-    const fileId = fileHandle ? fileHandle.name.replace(/[^a-zA-Z0-9]/g,'_') : `untitled-${fileCounter++}`;
+// ========== Pyodide (修改加载逻辑: 强制加载包) ==========
+async function loadPyodideWithPackages(){
+    logTerminal("正在加载 Python 核心环境...");
+    runBtn.disabled = true; // 加载开始：禁用运行按钮
+
+    // 核心 Pyodide 加载
+    pyodide = await loadPyodide({
+        stdout: logTerminal,
+        stderr: logTerminal
+    });
+    
+    // **每次都强制加载额外包**
+    logTerminal(`正在加载/初始化额外包: ${PACKAGES_TO_LOAD.join(', ')}... (请等待...)`);
+    try {
+        // 使用 loadPackage 加载所有包
+        // Pyodide 会智能地检查是否已安装，如果安装了则只是初始化
+        await pyodide.loadPackage(PACKAGES_TO_LOAD, logTerminal);
+        logTerminal("所有 Python 库加载完成。");
+    } catch (error) {
+        logTerminal(`加载 Python 库时出错：${error}. 请检查网络连接。`);
+    }
+
+    pyodideReady = true;
+    logTerminal("Python 环境已就绪 ✅");
+    runBtn.disabled = false; // 加载完成：启用运行按钮
+}
+
+function openWelcomeFile() {
+    if (openedFiles[WELCOME_FILE_ID]) {
+        switchTab(WELCOME_FILE_ID);
+    } else {
+        openFileInTab(WELCOME_FILE_NAME, WELCOME_CONTENT, null, WELCOME_FILE_ID); 
+    }
+}
+
+
+// ========== 文件与标签 (保持不变) ==========
+function openFileInTab(name, content, fileHandle=null, providedFileId=null){
+    
+    const fileId = providedFileId || `file-${fileCounter++}`;
+    
     if(openedFiles[fileId]){ switchTab(fileId); return; }
-    const isPython = name.toLowerCase().endsWith('.py') || !name.includes('.');
+    
+    const isPython = name.toLowerCase().endsWith('.py') || (!name.includes('.') && content===PYTHON_TEMPLATE); 
     const editorDiv = document.createElement('div');
     editorDiv.className = 'editor';
     editorDiv.id = `editor-${fileId}`;
     editorWrapper.appendChild(editorDiv);
+    
     const editor = CodeMirror(editorDiv,{
         value: content,
         mode: isPython?"python":"text/plain",
         theme:"dracula",
         lineNumbers:true,
         indentUnit:4,
-        tabSize:4
+        tabSize:4,
+        extraKeys: {"Ctrl-Space": "autocomplete"},
+        matchBrackets: true 
     });
+    
     const tab = document.createElement('div');
     tab.className = 'tab';
     tab.id = `tab-${fileId}`;
     tab.innerHTML = `<span>${name}</span><span class="close-btn" data-file-id="${fileId}">&times;</span>`;
     tabsBar.appendChild(tab);
+    
     openedFiles[fileId] = { name, editor, fileHandle, tab, isSaved: !!fileHandle };
+    
     tab.addEventListener('click', e=>{
         if(e.target.classList.contains('close-btn')){ closeTab(fileId); }
         else{ switchTab(fileId); }
     });
     switchTab(fileId);
-    terminal.textContent += `已打开文件: ${name}\n`;
 }
+
 function switchTab(fileId){
     if(!openedFiles[fileId] || activeFileId===fileId) return;
+    
     if(activeFileId){
-        openedFiles[activeFileId].tab.classList.remove('active');
-        document.getElementById(`editor-${activeFileId}`).classList.remove('active');
+        const prevFile = openedFiles[activeFileId];
+        if (prevFile) { 
+            prevFile.tab.classList.remove('active');
+            const currentEditorDiv = document.getElementById(`editor-${activeFileId}`);
+            if(currentEditorDiv) currentEditorDiv.classList.remove('active');
+        }
     }
+    
     activeFileId = fileId;
     openedFiles[activeFileId].tab.classList.add('active');
-    document.getElementById(`editor-${activeFileId}`).classList.add('active');
-    getActiveEditor().refresh();
-}
-function closeTab(fileId){
-    if(!openedFiles[fileId]) return;
-    const f = openedFiles[fileId];
-    const isActive = activeFileId===fileId;
-    f.tab.remove();
-    document.getElementById(`editor-${fileId}`).remove();
-    delete openedFiles[fileId];
-    terminal.textContent += `已关闭文件: ${f.name}\n`;
-    if(isActive){
-        const remaining = Object.keys(openedFiles);
-        if(remaining.length>0){ switchTab(remaining[remaining.length-1]); }
-        else{ activeFileId = null; }
+    const nextEditorDiv = document.getElementById(`editor-${activeFileId}`);
+    if(nextEditorDiv) {
+        nextEditorDiv.classList.add('active');
+        getActiveEditor().refresh();
     }
 }
 
-// ========== 文件操作 ==========
+function closeTab(fileId){
+    if(!openedFiles[fileId]) return;
+    const f = openedFiles[fileId];
+    
+    const isActive = activeFileId===fileId;
+    
+    f.tab.remove();
+    document.getElementById(`editor-${fileId}`).remove(); 
+    
+    delete openedFiles[fileId];
+    
+    if(isActive){
+        activeFileId = null; 
+        
+        const remaining = Object.keys(openedFiles);
+        if(remaining.length>0){ 
+            switchTab(remaining[remaining.length-1]); 
+        }
+    }
+}
+
+// ========== 编辑器功能实现 (保持不变) ==========
+
+// 撤销/恢复
+document.getElementById('undo-btn').addEventListener('click', ()=>closeMenuAndExecute(()=>{
+    const editor = getActiveEditor();
+    if(editor) editor.undo();
+}));
+
+document.getElementById('redo-btn').addEventListener('click', ()=>closeMenuAndExecute(()=>{
+    const editor = getActiveEditor();
+    if(editor) editor.redo();
+}));
+
+// 全选
+document.getElementById('select-all-btn').addEventListener('click', ()=>closeMenuAndExecute(()=>{
+    const editor = getActiveEditor();
+    if(editor) editor.execCommand("selectAll");
+}));
+
+// 复制 (Copy) - 存入应用内存
+document.getElementById('copy-btn').addEventListener('click', ()=>closeMenuAndExecute(()=>{
+    const editor = getActiveEditor();
+    if (!editor) { return; }
+    const selectedText = editor.getSelection();
+    if (selectedText) {
+        appClipboard = selectedText; 
+    }
+}));
+
+// 剪切 (Cut) - 存入应用内存 + 删除
+document.getElementById('cut-btn').addEventListener('click', ()=>closeMenuAndExecute(()=>{
+    const editor = getActiveEditor();
+    if (!editor) { return; }
+    
+    const selectedText = editor.getSelection();
+    if (!selectedText) {
+        return;
+    }
+
+    appClipboard = selectedText;
+    
+    if (editor.somethingSelected()) {
+        editor.replaceSelection("", "around");
+    }
+}));
+
+// 粘贴 (Paste) - 从应用内存加载
+document.getElementById('paste-btn').addEventListener('click', ()=>closeMenuAndExecute(()=>{
+    const editor = getActiveEditor();
+    if (!editor) { return; }
+
+    if (appClipboard) {
+        editor.replaceSelection(appClipboard);
+    }
+}));
+
+// 查找 (Find) - 调用 CodeMirror 命令
+document.getElementById('find-btn').addEventListener('click', ()=>closeMenuAndExecute(()=>{
+    const editor = getActiveEditor();
+    if(editor) {
+        editor.execCommand("findPersistent"); 
+    }
+}));
+
+// 替换 (Replace) - 调用 CodeMirror 命令
+document.getElementById('replace-btn').addEventListener('click', ()=>closeMenuAndExecute(()=>{
+    const editor = getActiveEditor();
+    if(editor) {
+        editor.execCommand("replace"); 
+    }
+}));
+
+
+// ========== 文件操作 (保持不变) ==========
 async function writeFile(fileHandle, contents, fileName){
     const writable = await fileHandle.createWritable();
     await writable.write(contents);
     await writable.close();
     openedFiles[activeFileId].isSaved = true;
-    terminal.textContent += `文件已保存: ${fileName}\n`;
 }
 async function openFileFromHandle(fileHandle){
     try{
         const file = await fileHandle.getFile();
         const contents = await file.text();
-        openFileInTab(file.name, contents, fileHandle);
-    }catch(err){ terminal.textContent += `读取文件失败: ${err.message}\n`; }
+        openFileInTab(file.name, contents, fileHandle); 
+    }catch(err){ 
+        /* 忽略错误 */
+    }
+}
+async function saveActiveFile() {
+    const f = openedFiles[activeFileId]; 
+    if(!f) { return; }
+    const contents = f.editor.getValue();
+    if(f.fileHandle){ 
+        await writeFile(f.fileHandle, contents, f.name); 
+    } else { 
+        document.getElementById('save-as-btn').click(); 
+    }
 }
 
-// ========== 菜单事件 ==========
+// ========== 菜单事件 (保持不变) ==========
 document.getElementById('new-file-btn').addEventListener('click', ()=>closeMenuAndExecute(()=>{
-    let fileName = prompt("请输入新文件名 (.py 为 Python 脚本):","untitled.txt");
+    let fileName = prompt("选择.py文件类型，或输入文件名","untitled.py"); 
     if(!fileName) return;
     fileName = fileName.trim();
-    if(fileName===""){ terminal.textContent+="新建文件操作取消。\n"; return; }
+    if(fileName===""){ return; }
+    
     let template = DEFAULT_TEMPLATE;
     let ext = fileName.split('.').pop().toLowerCase();
-    if(ext==='py' || !fileName.includes('.')) template = PYTHON_TEMPLATE;
-    openFileInTab(fileName, template);
+    if(ext==='py') template = PYTHON_TEMPLATE; 
+
+    openFileInTab(fileName, template); 
 }));
 document.getElementById('close-tab-btn').addEventListener('click', ()=>closeMenuAndExecute(()=>{ if(activeFileId) closeTab(activeFileId); }));
 document.getElementById('open-file-btn').addEventListener('click', ()=>closeMenuAndExecute(async ()=>{
     try{
         const [fileHandle] = await window.showOpenFilePicker();
-        const file = await fileHandle.getFile();
-        const contents = await file.text();
-        openFileInTab(file.name, contents, fileHandle);
-    }catch(err){ if(err.name!=='AbortError'){ terminal.textContent += `打开文件失败: ${err.message}\n`; } }
+        await openFileFromHandle(fileHandle);
+    }catch(err){ 
+        if(err.name!=='AbortError'){ /* 忽略错误 */ }
+    }
 }));
-document.getElementById('save-file-btn').addEventListener('click', ()=>closeMenuAndExecute(async ()=>{
-    const f = openedFiles[activeFileId]; if(!f) return;
-    const contents = f.editor.getValue();
-    if(f.fileHandle){ await writeFile(f.fileHandle, contents, f.name); }
-    else{ document.getElementById('save-as-btn').click(); }
-}));
+document.getElementById('save-file-btn').addEventListener('click', ()=>closeMenuAndExecute(saveActiveFile)); 
 document.getElementById('save-as-btn').addEventListener('click', ()=>closeMenuAndExecute(async ()=>{
     const f = openedFiles[activeFileId]; if(!f) return;
     try{
-        const handle = await window.showSaveFilePicker({suggestedName:f.name, types:[{description:'Python Files', accept:{'text/x-python':['.py']}}]});
+        const suggestedName = f.fileHandle ? f.fileHandle.name : f.name;
+        let types = [];
+        const ext = suggestedName.split('.').pop().toLowerCase();
+        if(ext === 'py') {
+            types.push({description:'Python Files', accept:{'text/x-python':['.py']}});
+        } else if(ext === 'txt') {
+            types.push({description:'Text Files', accept:{'text/plain':['.txt']}});
+        }
+        
+        const handle = await window.showSaveFilePicker({suggestedName:suggestedName, types: types});
         const contents = f.editor.getValue();
         await writeFile(handle, contents, handle.name);
+        
         f.fileHandle = handle;
         f.name = handle.name;
         f.tab.querySelector('span').textContent = handle.name;
-    }catch(err){ if(err.name!=='AbortError') terminal.textContent+=`另存为失败: ${err.message}\n`; }
+    }catch(err){ 
+        if(err.name!=='AbortError') { /* 忽略错误 */ }
+    }
 }));
 
-// ========== 运行按钮 ==========
+// ========== 运行按钮 (保持不变) ==========
 document.getElementById("run-btn").addEventListener("click", async ()=>{
     const editor = getActiveEditor();
-    if(!editor){ terminal.textContent+="没有打开的文件可运行。\n"; return; }
+    if(!editor){ return; }
     const code = editor.getValue();
-    if(!pyodideReady){ terminal.textContent+="Python 环境加载中，请稍等...\n"; return; }
-    terminal.textContent += "\n>>> 正在运行代码...\n";
+    if(!pyodideReady){ 
+        logTerminal("Python 环境加载中，请稍等..."); 
+        return; 
+    }
+    logTerminal("\n>>> 正在运行代码...");
     try{
-        pyodide.stdout = msg=>{ terminal.textContent += msg+"\n"; terminal.scrollTop=terminal.scrollHeight; };
-        pyodide.stderr = pyodide.stdout;
         await pyodide.runPythonAsync(code);
-    }catch(err){ terminal.textContent += err+"\n"; }
+    }catch(err){ 
+        logTerminal(err);
+    }
 });
 
-// ========== 文件夹导入和树 ==========
+// ========== 文件夹导入和树 (保持不变) ==========
 document.getElementById('import-folder-btn').addEventListener('click', ()=>closeMenuAndExecute(async ()=>{
     try{
         currentDirectoryHandle = await window.showDirectoryPicker();
         fileHandlesCache = {};
-        terminal.textContent += `已导入文件夹: ${currentDirectoryHandle.name}\n`;
         fileHandlesCache[currentDirectoryHandle.name] = currentDirectoryHandle; 
         await renderProjectTree(currentDirectoryHandle, document.getElementById('project-tree'), currentDirectoryHandle.name);
-    }catch(err){ if(err.name!=='AbortError'){ terminal.textContent+=`导入文件夹失败: ${err.message}\n`; } }
+    }catch(err){ 
+        if(err.name!=='AbortError'){ /* 忽略错误 */ }
+    }
 }));
 
 function getHandleByPath(path){ return fileHandlesCache[path] || null; }
@@ -555,7 +781,6 @@ async function renderProjectTree(handle, parentElement, path){
         }else if(item.kind==='directory'){
             li.className = 'icon-folder';
             
-            // 关键修复：将标题和切换放在一个 div 中
             const titleDiv = document.createElement('div');
             titleDiv.className = 'folder-title';
             titleDiv.textContent = item.name;
@@ -563,14 +788,13 @@ async function renderProjectTree(handle, parentElement, path){
             const toggle = document.createElement('span');
             toggle.className = 'folder-toggle';
             
-            // 🚨 关键修改 3: 将切换按钮添加到名称的前面，图标将通过 CSS 伪元素添加在最前面
             titleDiv.prepend(toggle);
             
-            li.appendChild(titleDiv); // 标题容器
+            li.appendChild(titleDiv);
             
             const ul = document.createElement('ul');
             ul.className = 'folder-content';
-            li.appendChild(ul); // 子列表
+            li.appendChild(ul); 
         }
         parentElement.appendChild(li);
     }
@@ -597,12 +821,67 @@ projectTree.addEventListener('click', async e=>{
     e.stopPropagation();
 });
 
-// ========== 菜单打开/关闭 ==========
+// ========== 菜单打开/关闭 (保持不变) ==========
 fileMenuItem.addEventListener('click', e=>{
+    editMenuItem.classList.remove('menu-open');
     if(e.target.tagName==='SPAN' || e.target===fileMenuItem) fileMenuItem.classList.toggle('menu-open');
     e.stopPropagation();
 });
+
+editMenuItem.addEventListener('click', e=>{
+    fileMenuItem.classList.remove('menu-open');
+    if(e.target.tagName==='SPAN' || e.target===editMenuItem) editMenuItem.classList.toggle('menu-open');
+    e.stopPropagation();
+});
+
 document.addEventListener('click', closeMenu);
+
+// ========== 拖放功能 (保持不变) ==========
+bodyElement.addEventListener('dragover', e => {
+    e.preventDefault();
+    bodyElement.classList.add('drag-over');
+});
+
+bodyElement.addEventListener('dragleave', e => {
+    e.preventDefault();
+    if(e.target === bodyElement) {
+        bodyElement.classList.remove('drag-over');
+    }
+});
+
+bodyElement.addEventListener('drop', async e => {
+    e.preventDefault();
+    bodyElement.classList.remove('drag-over');
+
+    if (e.dataTransfer.items) {
+        for (let i = 0; i < e.dataTransfer.items.length; i++) {
+            const item = e.dataTransfer.items[i];
+            if (item.kind === 'file') {
+                try {
+                    const file = item.getAsFile();
+                    if (file) {
+                        const contents = await file.text();
+                        openFileInTab(file.name, contents, null); 
+                    }
+                } catch (err) {
+                    /* 忽略错误 */
+                }
+            }
+        }
+    }
+});
+
+// ========== Ctrl+S/Cmd+S 快捷键 (保持不变) ==========
+document.addEventListener('keydown', e => {
+    const isModifierPressed = e.ctrlKey || e.metaKey; 
+    const isSPressed = e.key === 's' || e.key === 'S';
+    
+    if (isModifierPressed && isSPressed) {
+        e.preventDefault(); 
+        saveActiveFile(); 
+    }
+});
+
 
 // ========== 调整大小 (保持不变) ==========
 const sidebarResizer=document.getElementById('sidebar-resizer');
@@ -635,6 +914,10 @@ terminalResizer.addEventListener('mousedown', e=>{
     document.addEventListener('mousemove', doResizeV); document.addEventListener('mouseup', stopResizeV);
     document.body.style.cursor='row-resize'; document.body.classList.add('no-select'); e.preventDefault();
 });
+
+// 启动序列：先打开说明文档，再加载 Pyodide
+openWelcomeFile();
+loadPyodideWithPackages();
 </script>
 </body>
 </html>
