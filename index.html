@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pyodide Python 编辑器</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/theme/dracula.min.css">
+<style>
+body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-family: "Segoe UI", sans-serif;
+    background: #1e1e1e;
+    color: #d4d4d4;
+}
+.topbar {
+    height: 40px;
+    background: #333;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    font-size: 14px;
+    border-bottom: 1px solid #444;
+    position: relative;
+    z-index: 10;
+}
+.topbar .menu-left {
+    display: flex;
+    align-items: center;
+}
+.topbar .menu-left>div {
+    margin-right: 20px;
+    position: relative;
+}
+.topbar .menu-left>div>span {
+    cursor: pointer;
+    padding: 5px 0;
+}
+.topbar .menu-left>div>span:hover {
+    color: #0e639c;
+}
+.submenu {
+    display: none;
+    position: absolute;
+    top: 35px;
+    left: 0;
+    background: #252526;
+    border: 1px solid #444;
+    min-width: 150px;
+    box-shadow: 0 4px 8px rgba(0,0,0,.3);
+    padding: 5px 0;
+    z-index: 20;
+}
+.submenu a {
+    display: block;
+    padding: 5px 15px;
+    text-decoration: none;
+    color: #d4d4d4;
+    cursor: pointer;
+}
+.submenu a:hover {
+    background: #0e639c;
+    color: white;
+}
+.topbar .menu-left>div.menu-open .submenu {
+    display: block;
+}
+#run-btn {
+    background: #0e639c;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    padding: 3px 10px;
+    cursor: pointer;
+    font-weight: bold;
+}
+#run-btn:hover {
+    background: #1177bb;
+}
+.main-content {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+.sidebar-wrapper {
+    position: relative;
+    width: 250px;
+    min-width: 50px;
+    max-width: 80%;
+    display: flex;
+    flex-direction: column;
+}
+.sidebar-resizer {
+    right: -3px;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    position: absolute;
+    z-index: 15;
+    background: transparent;
+}
+#sidebar {
+    flex: 1;
+    background: #252526;
+    overflow-y: auto;
+    padding: 10px 0;
+    font-size: 13px;
+    user-select: none;
+}
+
+/* 核心修改区域：文件树样式 */
+.project-structure {
+    list-style: none;
+    padding: 0; 
+    margin: 0;
+    font-size: 13px;
+}
+.project-structure li {
+    display: block; 
+    cursor: pointer;
+    white-space: nowrap;
+    padding: 0; 
+    position: relative;
+    user-select: text; 
+}
+.project-structure li:hover .folder-title,
+.project-structure li.icon-file:hover {
+    background: #3c3c3c;
+}
+
+.folder-title {
+    /* 文件夹标题行本身水平排列并垂直居中 */
+    display: flex;
+    align-items: center;
+    padding: 2px 5px;
+}
+
+/* 🚨 关键修改 1: 将文件夹图标添加到 .folder-title 的 ::before */
+.icon-folder > .folder-title::before { 
+    content: '📁 '; /* 文件夹图标 */
+    width: 20px; 
+    display:inline-block; 
+    text-align:center; 
+    margin-right: -4px; /* 稍微向左移动，靠近切换图标 */
+    /* 🚨 之前设置的 margin-left: -5px 现在不需要了，因为我们把图标放到最左边 */
+}
+
+/* 文件行仍然保持 flex，便于图标和文本对齐 */
+li.icon-file {
+    display: flex;
+    align-items: center;
+    padding: 2px 5px;
+}
+
+.folder-toggle {
+    width: 16px;
+    display: inline-block;
+    text-align: center;
+    /* 🚨 关键修改 2: 调整 margin-right，确保切换图标和名称之间有间隔 */
+    margin-right: 4px; 
+    color: #999;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: normal; 
+}
+/* 切换回 ▶ 和 ▼ */
+.folder-toggle::before { content: '▶'; }
+li.folder-open > .folder-title > .folder-toggle::before { content: '▼'; }
+
+.folder-content {
+    list-style: none;
+    padding-left: 0; 
+    margin: 0;
+    display: none;
+    width: 100%;
+    padding-left: 16px; 
+}
+li.folder-open > .folder-content { display: block; }
+
+/* 🚨 移除旧的文件夹图标样式（不再对 li.icon-folder::before 设置样式） */
+/* .icon-folder::before { ... } */
+
+/* 文件图标（保持不变，它只对 li.icon-file 起作用） */
+.icon-file::before { 
+    line-height: 1.2;
+    content: '📄 '; 
+    width: 20px; 
+    display:inline-block; 
+    text-align:center; 
+    margin-right:5px; 
+}
+
+/* 模拟特定文件类型的图标 */
+.icon-file[data-name$=".js"]::before, 
+.icon-file[data-name$=".ts"]::before {
+    content: 'JS';
+    color: #1e1e1e;
+    background: #f9e64e;
+    font-weight: bold;
+    font-size: 11px;
+    line-height: 1.2;
+    border-radius: 2px;
+    padding: 1px 2px;
+    margin-right: 5px;
+}
+.icon-file[data-name$=".py"]::before {
+    content: '🐍 ';
+    color: #3776ab;
+    background: none;
+    padding: 0;
+    margin-right: 4px;
+}
+.icon-file[data-name$=".html"]::before {
+    content: ' </> ';
+    color: #e34c26;
+    background: none;
+    padding: 0;
+    margin-right: 4px;
+}
+
+/* ... (其他通用样式保持不变) ... */
+.editor-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+.tabs-bar {
+    display: flex;
+    height: 30px;
+    background: #1e1e1e;
+    border-bottom: 1px solid #3c3c3c;
+    overflow-x: auto;
+}
+.tab {
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    border-right: 1px solid #3c3c3c;
+    background: #252526;
+    color: #999;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    user-select: none;
+}
+.tab.active {
+    background: #1e1e1e;
+    color: #d4d4d4;
+}
+.tab .close-btn {
+    margin-left: 8px;
+    font-weight: bold;
+    color: #999;
+}
+.tab .close-btn:hover {
+    color: #d4d4d4;
+}
+.editor-wrapper {
+    flex: 1;
+    position: relative;
+}
+.editor {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+}
+.editor.active { display: block; }
+.CodeMirror { height: 100%; }
+#terminal-wrapper {
+    position: relative;
+    height: 150px;
+    min-height: 30px;
+    max-height: 80%;
+}
+.terminal-resizer {
+    top: -3px;
+    left: 0;
+    right: 0;
+    height: 6px;
+    cursor: row-resize;
+    position: absolute;
+    z-index: 15;
+    background: transparent;
+}
+#terminal {
+    height: 100%;
+    background: #1e1e1e;
+    border-top: 1px solid #333;
+    color: #d4d4d4;
+    padding: 5px;
+    font-family: monospace;
+    overflow: auto;
+    white-space: pre-wrap;
+}
+.no-select { user-select: none; }
+.resizing-h { cursor: col-resize; }
+.resizing-v { cursor: row-resize; }
+</style>
+</head>
+<body>
+<div class="topbar">
+    <div class="menu-left">
+        <div id="file-menu-item"><span>File</span>
+            <div class="submenu">
+                <a id="new-file-btn">New File</a>
+                <a id="open-file-btn">Open File...</a>
+                <a id="save-file-btn">Save File</a>
+                <a id="close-tab-btn">Close File</a>
+                <a id="save-as-btn">Save As...</a>
+                <hr style="margin:5px 0;border-color:#444">
+                <a id="import-folder-btn">Import Folder...</a>
+            </div>
+        </div>
+        <div><span>Edit</span></div>
+        <div><span>View</span></div>
+        <div><span>Run</span></div>
+        <div><span>Terminal</span></div>
+        <div><span>Help</span></div>
+    </div>
+    <button id="run-btn">▶ Run</button>
+</div>
+
+<div class="main-content">
+    <div class="sidebar-wrapper">
+        <div id="sidebar">
+            <div style="padding:0 10px;font-weight:bold;margin-bottom:5px">Project Explorer</div>
+            <ul id="project-tree" class="project-structure"></ul>
+        </div>
+        <div id="sidebar-resizer" class="sidebar-resizer"></div>
+    </div>
+
+    <div class="editor-container">
+        <div id="tabs-bar" class="tabs-bar"></div>
+        <div id="editor-wrapper" class="editor-wrapper"></div>
+        <div id="terminal-wrapper">
+            <div id="terminal-resizer" class="terminal-resizer"></div>
+            <div id="terminal"></div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/mode/python/python.min.js"></script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+
+<script>
+// ========== 全局变量 ==========
+let pyodideReady = false;
+let pyodide;
+const terminal = document.getElementById("terminal");
+const fileMenuItem = document.getElementById('file-menu-item');
+const sidebarWrapper = document.querySelector('.sidebar-wrapper');
+const editorContainer = document.querySelector('.editor-container');
+const tabsBar = document.getElementById('tabs-bar');
+const editorWrapper = document.getElementById('editor-wrapper');
+const terminalWrapper = document.getElementById('terminal-wrapper');
+let currentDirectoryHandle = null;
+let openedFiles = {};
+let fileHandlesCache = {};
+let activeFileId = null;
+let fileCounter = 1;
+
+const PYTHON_TEMPLATE = '# Python 脚本\nprint("Hello, Pyodide!")';
+const DEFAULT_TEMPLATE = '// 新建文件\n';
+
+// ========== 工具函数 ==========
+function closeMenu(){ fileMenuItem.classList.remove('menu-open'); }
+function closeMenuAndExecute(callback){ closeMenu(); if(callback) callback(); }
+function getActiveEditor(){ return activeFileId ? openedFiles[activeFileId].editor : null; }
+
+// ========== Pyodide ==========
+async function loadPyodideWithPackages(){
+    terminal.textContent = "正在加载 Python 环境，请稍等...\n";
+    pyodide = await loadPyodide({
+        stdout: msg => { terminal.textContent+=msg+"\n"; terminal.scrollTop=terminal.scrollHeight; },
+        stderr: msg => { terminal.textContent+=msg+"\n"; terminal.scrollTop=terminal.scrollHeight; }
+    });
+    const packages = ['numpy','scipy'];
+    for(const pkg of packages){ terminal.textContent+=`正在加载 ${pkg}...\n`; await pyodide.loadPackage(pkg); }
+    pyodideReady = true;
+    terminal.textContent += "Python 环境已就绪 ✅\n";
+}
+loadPyodideWithPackages();
+
+// ========== 文件与标签 ==========
+function openFileInTab(name, content, fileHandle=null){
+    const fileId = fileHandle ? fileHandle.name.replace(/[^a-zA-Z0-9]/g,'_') : `untitled-${fileCounter++}`;
+    if(openedFiles[fileId]){ switchTab(fileId); return; }
+    const isPython = name.toLowerCase().endsWith('.py') || !name.includes('.');
+    const editorDiv = document.createElement('div');
+    editorDiv.className = 'editor';
+    editorDiv.id = `editor-${fileId}`;
+    editorWrapper.appendChild(editorDiv);
+    const editor = CodeMirror(editorDiv,{
+        value: content,
+        mode: isPython?"python":"text/plain",
+        theme:"dracula",
+        lineNumbers:true,
+        indentUnit:4,
+        tabSize:4
+    });
+    const tab = document.createElement('div');
+    tab.className = 'tab';
+    tab.id = `tab-${fileId}`;
+    tab.innerHTML = `<span>${name}</span><span class="close-btn" data-file-id="${fileId}">&times;</span>`;
+    tabsBar.appendChild(tab);
+    openedFiles[fileId] = { name, editor, fileHandle, tab, isSaved: !!fileHandle };
+    tab.addEventListener('click', e=>{
+        if(e.target.classList.contains('close-btn')){ closeTab(fileId); }
+        else{ switchTab(fileId); }
+    });
+    switchTab(fileId);
+    terminal.textContent += `已打开文件: ${name}\n`;
+}
+function switchTab(fileId){
+    if(!openedFiles[fileId] || activeFileId===fileId) return;
+    if(activeFileId){
+        openedFiles[activeFileId].tab.classList.remove('active');
+        document.getElementById(`editor-${activeFileId}`).classList.remove('active');
+    }
+    activeFileId = fileId;
+    openedFiles[activeFileId].tab.classList.add('active');
+    document.getElementById(`editor-${activeFileId}`).classList.add('active');
+    getActiveEditor().refresh();
+}
+function closeTab(fileId){
+    if(!openedFiles[fileId]) return;
+    const f = openedFiles[fileId];
+    const isActive = activeFileId===fileId;
+    f.tab.remove();
+    document.getElementById(`editor-${fileId}`).remove();
+    delete openedFiles[fileId];
+    terminal.textContent += `已关闭文件: ${f.name}\n`;
+    if(isActive){
+        const remaining = Object.keys(openedFiles);
+        if(remaining.length>0){ switchTab(remaining[remaining.length-1]); }
+        else{ activeFileId = null; }
+    }
+}
+
+// ========== 文件操作 ==========
+async function writeFile(fileHandle, contents, fileName){
+    const writable = await fileHandle.createWritable();
+    await writable.write(contents);
+    await writable.close();
+    openedFiles[activeFileId].isSaved = true;
+    terminal.textContent += `文件已保存: ${fileName}\n`;
+}
+async function openFileFromHandle(fileHandle){
+    try{
+        const file = await fileHandle.getFile();
+        const contents = await file.text();
+        openFileInTab(file.name, contents, fileHandle);
+    }catch(err){ terminal.textContent += `读取文件失败: ${err.message}\n`; }
+}
+
+// ========== 菜单事件 ==========
+document.getElementById('new-file-btn').addEventListener('click', ()=>closeMenuAndExecute(()=>{
+    let fileName = prompt("请输入新文件名 (.py 为 Python 脚本):","untitled.txt");
+    if(!fileName) return;
+    fileName = fileName.trim();
+    if(fileName===""){ terminal.textContent+="新建文件操作取消。\n"; return; }
+    let template = DEFAULT_TEMPLATE;
+    let ext = fileName.split('.').pop().toLowerCase();
+    if(ext==='py' || !fileName.includes('.')) template = PYTHON_TEMPLATE;
+    openFileInTab(fileName, template);
+}));
+document.getElementById('close-tab-btn').addEventListener('click', ()=>closeMenuAndExecute(()=>{ if(activeFileId) closeTab(activeFileId); }));
+document.getElementById('open-file-btn').addEventListener('click', ()=>closeMenuAndExecute(async ()=>{
+    try{
+        const [fileHandle] = await window.showOpenFilePicker();
+        const file = await fileHandle.getFile();
+        const contents = await file.text();
+        openFileInTab(file.name, contents, fileHandle);
+    }catch(err){ if(err.name!=='AbortError'){ terminal.textContent += `打开文件失败: ${err.message}\n`; } }
+}));
+document.getElementById('save-file-btn').addEventListener('click', ()=>closeMenuAndExecute(async ()=>{
+    const f = openedFiles[activeFileId]; if(!f) return;
+    const contents = f.editor.getValue();
+    if(f.fileHandle){ await writeFile(f.fileHandle, contents, f.name); }
+    else{ document.getElementById('save-as-btn').click(); }
+}));
+document.getElementById('save-as-btn').addEventListener('click', ()=>closeMenuAndExecute(async ()=>{
+    const f = openedFiles[activeFileId]; if(!f) return;
+    try{
+        const handle = await window.showSaveFilePicker({suggestedName:f.name, types:[{description:'Python Files', accept:{'text/x-python':['.py']}}]});
+        const contents = f.editor.getValue();
+        await writeFile(handle, contents, handle.name);
+        f.fileHandle = handle;
+        f.name = handle.name;
+        f.tab.querySelector('span').textContent = handle.name;
+    }catch(err){ if(err.name!=='AbortError') terminal.textContent+=`另存为失败: ${err.message}\n`; }
+}));
+
+// ========== 运行按钮 ==========
+document.getElementById("run-btn").addEventListener("click", async ()=>{
+    const editor = getActiveEditor();
+    if(!editor){ terminal.textContent+="没有打开的文件可运行。\n"; return; }
+    const code = editor.getValue();
+    if(!pyodideReady){ terminal.textContent+="Python 环境加载中，请稍等...\n"; return; }
+    terminal.textContent += "\n>>> 正在运行代码...\n";
+    try{
+        pyodide.stdout = msg=>{ terminal.textContent += msg+"\n"; terminal.scrollTop=terminal.scrollHeight; };
+        pyodide.stderr = pyodide.stdout;
+        await pyodide.runPythonAsync(code);
+    }catch(err){ terminal.textContent += err+"\n"; }
+});
+
+// ========== 文件夹导入和树 ==========
+document.getElementById('import-folder-btn').addEventListener('click', ()=>closeMenuAndExecute(async ()=>{
+    try{
+        currentDirectoryHandle = await window.showDirectoryPicker();
+        fileHandlesCache = {};
+        terminal.textContent += `已导入文件夹: ${currentDirectoryHandle.name}\n`;
+        fileHandlesCache[currentDirectoryHandle.name] = currentDirectoryHandle; 
+        await renderProjectTree(currentDirectoryHandle, document.getElementById('project-tree'), currentDirectoryHandle.name);
+    }catch(err){ if(err.name!=='AbortError'){ terminal.textContent+=`导入文件夹失败: ${err.message}\n`; } }
+}));
+
+function getHandleByPath(path){ return fileHandlesCache[path] || null; }
+
+async function renderProjectTree(handle, parentElement, path){
+    parentElement.innerHTML = '';
+    let items = [];
+    for await(const entry of handle.values()){
+        const fullPath = path + '/' + entry.name;
+        fileHandlesCache[fullPath] = entry;
+        items.push(entry);
+    }
+    items.sort((a,b)=>{
+        if(a.kind==='directory' && b.kind!=='directory') return -1;
+        if(a.kind!=='directory' && b.kind==='directory') return 1;
+        return a.name.localeCompare(b.name);
+    });
+    for(const item of items){
+        const fullPath = path+'/'+item.name;
+        const li = document.createElement('li');
+        li.setAttribute('data-path', fullPath);
+        
+        if(item.kind==='file'){
+            li.className = 'icon-file';
+            li.setAttribute('data-name', item.name);
+            li.textContent = item.name;
+            li.addEventListener('click', async e=>{ e.stopPropagation(); await openFileFromHandle(item); });
+        }else if(item.kind==='directory'){
+            li.className = 'icon-folder';
+            
+            // 关键修复：将标题和切换放在一个 div 中
+            const titleDiv = document.createElement('div');
+            titleDiv.className = 'folder-title';
+            titleDiv.textContent = item.name;
+            
+            const toggle = document.createElement('span');
+            toggle.className = 'folder-toggle';
+            
+            // 🚨 关键修改 3: 将切换按钮添加到名称的前面，图标将通过 CSS 伪元素添加在最前面
+            titleDiv.prepend(toggle);
+            
+            li.appendChild(titleDiv); // 标题容器
+            
+            const ul = document.createElement('ul');
+            ul.className = 'folder-content';
+            li.appendChild(ul); // 子列表
+        }
+        parentElement.appendChild(li);
+    }
+}
+
+const projectTree = document.getElementById('project-tree');
+projectTree.addEventListener('click', async e=>{
+    const titleDiv = e.target.closest('.folder-title');
+    if(!titleDiv) return;
+    
+    const folderLi = titleDiv.closest('li.icon-folder');
+    if(!folderLi) return;
+    
+    const ul = folderLi.querySelector('.folder-content');
+    const folderPath = folderLi.getAttribute('data-path');
+    const handle = getHandleByPath(folderPath);
+    if(!handle) return;
+    
+    const isOpen = folderLi.classList.toggle('folder-open');
+    
+    if(isOpen && ul.children.length===0){
+        await renderProjectTree(handle, ul, folderPath);
+    }
+    e.stopPropagation();
+});
+
+// ========== 菜单打开/关闭 ==========
+fileMenuItem.addEventListener('click', e=>{
+    if(e.target.tagName==='SPAN' || e.target===fileMenuItem) fileMenuItem.classList.toggle('menu-open');
+    e.stopPropagation();
+});
+document.addEventListener('click', closeMenu);
+
+// ========== 调整大小 (保持不变) ==========
+const sidebarResizer=document.getElementById('sidebar-resizer');
+const terminalResizer=document.getElementById('terminal-resizer');
+let initialX, initialWidth, editorRect;
+
+const doResizeH = e => {
+    const deltaX = e.clientX - initialX;
+    const newWidth = initialWidth + deltaX;
+    sidebarWrapper.style.width = `${newWidth}px`;
+    const activeEditor = getActiveEditor(); if(activeEditor) activeEditor.refresh();
+};
+const stopResizeH = ()=>{ document.removeEventListener('mousemove',doResizeH); document.removeEventListener('mouseup',stopResizeH); document.body.style.cursor='default'; document.body.classList.remove('no-select'); sidebarResizer.style.cursor='col-resize'; };
+sidebarResizer.addEventListener('mousedown', e=>{
+    initialX = e.clientX; initialWidth = sidebarWrapper.offsetWidth;
+    document.addEventListener('mousemove', doResizeH); document.addEventListener('mouseup', stopResizeH);
+    document.body.style.cursor='col-resize'; document.body.classList.add('no-select'); e.preventDefault();
+});
+
+const doResizeV = e => {
+    const mainContentHeight=document.querySelector('.main-content').offsetHeight;
+    const tabsBarHeight=tabsBar.offsetHeight;
+    const newTerminalHeight=mainContentHeight-(e.clientY-editorContainer.getBoundingClientRect().top)-tabsBarHeight;
+    terminalWrapper.style.height=`${newTerminalHeight}px`;
+    const activeEditor = getActiveEditor(); if(activeEditor) activeEditor.refresh();
+};
+const stopResizeV = ()=>{ document.removeEventListener('mousemove',doResizeV); document.removeEventListener('mouseup',stopResizeV); document.body.style.cursor='default'; document.body.classList.remove('no-select'); terminalResizer.style.cursor='row-resize'; };
+terminalResizer.addEventListener('mousedown', e=>{
+    editorRect = editorContainer.getBoundingClientRect();
+    document.addEventListener('mousemove', doResizeV); document.addEventListener('mouseup', stopResizeV);
+    document.body.style.cursor='row-resize'; document.body.classList.add('no-select'); e.preventDefault();
+});
+</script>
+</body>
+</html>
